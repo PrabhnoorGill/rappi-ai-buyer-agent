@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Rappi AI Purchasing Agent</title>
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>🛒 AI Purchasing Agent — Scenario 1</h1>
+    <p class="subtitle">Purchase recommendation review, with a live trace of what the agent looked up and why.</p>
+  </header>
+
+  <main>
+    <section class="panel" id="state-panel">
+      <h2>Current mock data <button id="reset-btn">Reset</button></h2>
+      <div id="state"></div>
+    </section>
+
+    <section class="panel" id="rec-panel">
+      <h2>Recommendation to review</h2>
+      <form id="rec-form">
+        <label>Product ID <input name="product_id" value="P-001" /></label>
+        <label>Node ID <input name="node_id" value="N-BOG-01" /></label>
+        <label>Supplier ID <input name="supplier_id" value="S-01" /></label>
+        <label>Recommended qty <input name="recommended_qty" type="number" value="800" /></label>
+        <button type="submit">Run agent</button>
+      </form>
+    </section>
+
+    <section class="panel" id="result-panel" hidden>
+      <h2>Agent trace</h2>
+      <div id="trace"></div>
+
+      <h2>Final decision</h2>
+      <div id="decision"></div>
+
+      <h2>Validation & action</h2>
+      <div id="validation"></div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
