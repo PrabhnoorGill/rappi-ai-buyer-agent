@@ -1,0 +1,15 @@
+{
+  "name": "budget_constrained_modify",
+  "description": "Demand supports a large order and storage is not a problem, but the available purchasing budget cannot cover 800 units at this supplier's unit price. The order should be modified down to what the budget allows.",
+  "seed": {
+    "products": [{"product_id": "P-001", "name": "Oat Milk 1L", "unit_cost": 6.0, "unit_storage_volume": 1.0}],
+    "suppliers": [{"supplier_id": "S-01", "name": "NordicDairy Co.", "lead_time_days": 7, "min_order_qty": 100, "unit_price": 6.0, "reliability_score": 0.95}],
+    "inventory": [{"product_id": "P-001", "node_id": "N-01", "on_hand_qty": 50}],
+    "forecasts": [{"product_id": "P-001", "node_id": "N-01", "horizon_days": 14, "forecast_qty": 900, "daily_avg": 64.3, "trend": "rising"}],
+    "purchase_orders": [],
+    "budgets": [{"node_id": "N-01", "category": "default", "available_amount": 3000.0}],
+    "storage": [{"node_id": "N-01", "available_units": 2000}]
+  },
+  "recommendation": {"product_id": "P-001", "node_id": "N-01", "supplier_id": "S-01", "recommended_qty": 800, "category": "default"},
+  "expected": {"decision": "modify", "quantity_range": [100, 500]}
+}
