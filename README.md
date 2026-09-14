@@ -60,13 +60,13 @@ docs are at `http://127.0.0.1:8000/docs`.
 flowchart TD
     UI["Frontend (HTML/JS)<br/>submit recommendation, show trace"] -->|POST /api/agent/review| API[FastAPI backend]
 
-    subgraph Agent Loop [app/agent.py]
-        LLM["Claude (tool-use loop)"]
-        LLM -->|calls read tools| Tools[app/tools.py]
+    subgraph AgentLoop["Decision flow - app/agent.py"]
+        Agent["Purchasing agent<br/>demo rules or Claude tool-use"]
+        Agent -->|calls read tools| Tools[app/tools.py]
         Tools --> DB[(Mock DB<br/>app/db.py)]
-        LLM -->|submit_decision| Orch[Orchestrator]
+        Agent -->|proposes decision| Orch[Orchestrator]
         Orch -->|pre-execution check| Val1[validate_business_decision]
-        Val1 -- fails, retries left --> LLM
+        Val1 -- fails, retries left --> Agent
         Val1 -- passes --> Exec[Execute: db.create_po]
         Val1 -- fails, out of retries --> Escalate[Escalate to human]
         Exec --> Val2[validate_execution]
@@ -74,17 +74,17 @@ flowchart TD
         Val2 -- passes --> Done[Return decision + trace + validation]
     end
 
-    API --> Agent Loop
-    Agent Loop --> API
+    API --> Agent
+    Done --> API
     API --> UI
 
-DataAPIs["Read-only REST data APIs<br/>/api/inventory /api/forecast<br/>/api/purchase-orders /api/suppliers<br/>/api/budget /api/storage"] --- DB
+    DataAPIs["Read-only REST data APIs<br/>inventory, forecast, purchase orders<br/>suppliers, budget, storage"] --- DB
 
-    Eval["eval/run_eval.py"] -->|resets DB per scenario, calls run_agent directly| DB
-    Eval --> Agent Loop
+    Eval["eval/run_eval.py"] -->|resets DB per scenario| DB
+    Eval -->|runs scenarios| Agent
 ```
 
-**Why a separate orchestrator instead of letting the LLM execute its own
+**Why a separate orchestrator instead of letting the agent execute its own
 action:** the assignment explicitly says the recommendation "should not
 necessarily be assumed to be correct" — the same has to be true of the
 agent's own output. So the LLM only ever *proposes* a decision via
