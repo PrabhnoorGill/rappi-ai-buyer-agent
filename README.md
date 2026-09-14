@@ -6,6 +6,8 @@ open POs, supplier terms, budget, storage), and decides whether to
 **accept / modify / reject / investigate further** — then executes and
 validates that decision, rather than just describing what it thinks.
 
+Requires Python 3.10 or newer.
+
 This implements **Scenario 1 end-to-end**. The design generalizes to
 Scenarios 2–4 (see [Beyond Scenario 1](#beyond-scenario-1)).
 
@@ -14,9 +16,13 @@ Scenarios 2–4 (see [Beyond Scenario 1](#beyond-scenario-1)).
 ```bash
 # 1. backend
 cd backend
-python -m venv .venv && source .venv/bin/activate
+python -m venv .venv
+# PowerShell on Windows:
+.\.venv\Scripts\Activate.ps1
+# macOS/Linux: source .venv/bin/activate
 pip install -r requirements.txt
-cp ../.env.example .env   # then edit .env and add your ANTHROPIC_API_KEY
+Copy-Item ..\.env.example .env   # Windows; works immediately in free demo mode
+# macOS/Linux: cp ../.env.example .env
 uvicorn app.main:app --reload
 
 # 2. frontend (separate terminal) — any static server works
@@ -27,6 +33,21 @@ python -m http.server 5500
 # 3. run the evaluation suite (separate terminal)
 cd backend
 python -m eval.run_eval
+```
+
+The project defaults to **free demo mode**, which has no API key, account, or
+credit requirement. It uses the same data tools, validation gate, PO execution,
+and test scenarios, but applies transparent purchasing rules locally instead
+of calling an LLM. This makes the working demo reproducible for any reviewer.
+
+To use a live Claude agent instead, set `AGENT_MODE=anthropic` and provide a
+funded `ANTHROPIC_API_KEY` in `backend/.env`.
+
+Run the deterministic guardrail tests with:
+
+```bash
+cd backend
+python -m unittest discover -s tests -v
 ```
 
 The backend seeds a default mock dataset on startup (`app/seed_data.py`) so
@@ -57,7 +78,7 @@ flowchart TD
     Agent Loop --> API
     API --> UI
 
-    DataAPIs["REST data APIs<br/>/api/inventory /api/forecast<br/>/api/purchase-orders /api/suppliers<br/>/api/budget /api/storage"] --- DB
+DataAPIs["Read-only REST data APIs<br/>/api/inventory /api/forecast<br/>/api/purchase-orders /api/suppliers<br/>/api/budget /api/storage"] --- DB
 
     Eval["eval/run_eval.py"] -->|resets DB per scenario, calls run_agent directly| DB
     Eval --> Agent Loop
@@ -88,9 +109,9 @@ investigation:
   `get_supplier_terms`, `get_budget_status`, `get_storage_capacity`
 - `submit_decision` — the only way the agent can conclude a run
 
-These same operations are also exposed as plain REST endpoints in
-`app/main.py`, so the "tools" the agent uses are just the internal buying
-API a human buyer or another service could call too.
+These same read operations are also exposed as plain REST endpoints in
+`app/main.py`. PO creation deliberately stays inside the orchestrator, so no
+public endpoint can bypass the validation gate.
 
 **Decision loop** (`app/agent.py`): Claude is given the recommendation and
 a system prompt telling it explicitly not to trust the recommendation,

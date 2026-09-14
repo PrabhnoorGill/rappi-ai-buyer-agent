@@ -4,7 +4,13 @@ from dotenv import load_dotenv
 load_dotenv()
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+# Keep this overrideable for teams that pin models, but default to a currently
+# supported model. The previous Claude 3.5 Sonnet snapshot has been retired.
+ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-6")
+
+# "demo" works locally with no account, credit, or API key. Set this to
+# "anthropic" only when a funded Anthropic API key is available.
+AGENT_MODE = os.getenv("AGENT_MODE", "demo").lower()
 
 # How many times the agent is allowed to revise its decision after a
 # validation failure before the run is escalated to a human.

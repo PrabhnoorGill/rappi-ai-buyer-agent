@@ -1,5 +1,5 @@
 from typing import Optional, List, Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Product(BaseModel):
@@ -51,26 +51,15 @@ class Budget(BaseModel):
 
 class StorageCapacity(BaseModel):
     node_id: str
-    available_units: int  # free storage capacity, in the same unit as unit_storage_volume
+    available_units: int  # total capacity, in the same unit as unit_storage_volume
 
 
 class Recommendation(BaseModel):
     product_id: str
     node_id: str
     supplier_id: str
-    recommended_qty: int
+    recommended_qty: int = Field(gt=0)
     category: str = "default"
-
-
-class CreatePORequest(BaseModel):
-    product_id: str
-    node_id: str
-    supplier_id: str
-    quantity: int
-
-
-class ModifyPORequest(BaseModel):
-    quantity: int
 
 
 class AgentDecision(BaseModel):

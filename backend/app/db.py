@@ -67,7 +67,8 @@ class MockDB:
         return self.purchase_orders.get(po_id)
 
     # ---- writes (actions) ----
-    def create_po(self, product_id: str, node_id: str, supplier_id: str, quantity: int) -> dict:
+    def create_po(self, product_id: str, node_id: str, supplier_id: str, quantity: int,
+                  category: str = "default") -> dict:
         supplier = self.suppliers[supplier_id]
         po_id = f"PO-{next(self._po_counter):04d}"
         po = {
@@ -81,9 +82,9 @@ class MockDB:
         }
         self.purchase_orders[po_id] = po
         # Buying spends budget and reserves storage against incoming stock.
-        for (n, cat), b in self.budgets.items():
-            if n == node_id:
-                b["available_amount"] -= quantity * supplier["unit_price"]
+        budget = self.budgets.get((node_id, category))
+        if budget:
+            budget["available_amount"] -= quantity * supplier["unit_price"]
         return po
 
     def modify_po(self, po_id: str, quantity: int) -> Optional[dict]:

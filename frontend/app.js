@@ -14,7 +14,7 @@ async function loadState() {
       <tr><th>Open POs</th><td>${data.purchase_orders.map(po => `${po.po_id}: ${po.quantity} units (${po.status})`).join(", ") || "none"}</td></tr>
       <tr><th>Supplier</th><td>${data.suppliers.map(s => `${s.name}: MOQ ${s.min_order_qty}, lead ${s.lead_time_days}d, $${s.unit_price}/unit`).join(" | ")}</td></tr>
       <tr><th>Budget</th><td>$${data.budgets.map(b => b.available_amount).join(", ")}</td></tr>
-      <tr><th>Storage</th><td>${data.storage.map(s => `${s.available_units} units free`).join(", ")}</td></tr>
+      <tr><th>Storage capacity</th><td>${data.storage.map(s => `${s.available_units} units total`).join(", ")}</td></tr>
     </table>`;
 }
 
@@ -40,14 +40,22 @@ document.getElementById("rec-form").addEventListener("submit", async (e) => {
   document.getElementById("decision").innerHTML = "";
   document.getElementById("validation").innerHTML = "";
 
-  const res = await fetch(`${API_BASE}/api/agent/review`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(recommendation),
-  });
-  const data = await res.json();
-  renderResult(data);
-  await loadState();
+  try {
+    const res = await fetch(`${API_BASE}/api/agent/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(recommendation),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || "The agent request failed.");
+    renderResult(data);
+  } catch (error) {
+    document.getElementById("trace").innerHTML = "";
+    document.getElementById("decision").innerHTML = `<p class="bad">${error.message}</p>`;
+    document.getElementById("validation").innerHTML = "";
+  } finally {
+    await loadState();
+  }
 });
 
 function renderResult(data) {

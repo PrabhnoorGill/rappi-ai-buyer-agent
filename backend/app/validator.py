@@ -44,7 +44,40 @@ def validate_business_decision(recommendation: dict, decision: str, quantity: in
     supplier = db.get_supplier(supplier_id)
     budget = db.get_budget(node_id, recommendation.get("category", "default"))
     storage = db.get_storage(node_id)
-    qty = quantity or 0
+    if not supplier:
+        return {"passed": False, "violations": [f"Supplier {supplier_id} was not found."], "checks": {}}
+    if not db.get_product(product_id):
+        return {"passed": False, "violations": [f"Product {product_id} was not found."], "checks": {}}
+
+    # Tool schemas request integers, but this is the final trust boundary: do
+    # not rely on a model or caller to honour that schema.
+    if decision not in ("accept", "modify", "reject", "investigate"):
+        return {"passed": False, "violations": [f"Unknown decision '{decision}'."], "checks": {}}
+
+    if decision in ("accept", "modify"):
+        if isinstance(quantity, bool) or not isinstance(quantity, int) or quantity <= 0:
+            return {
+                "passed": False,
+                "violations": ["Accept/modify decisions require a positive integer quantity."],
+                "checks": {},
+            }
+        if decision == "accept" and quantity != recommendation["recommended_qty"]:
+            return {
+                "passed": False,
+                "violations": [
+                    f"Accept must use the original recommended quantity of {recommendation['recommended_qty']}; "
+                    f"use modify to order {quantity}."
+                ],
+                "checks": {},
+            }
+    elif quantity is not None:
+        return {
+            "passed": False,
+            "violations": [f"{decision.capitalize()} decisions must not include an order quantity."],
+            "checks": {},
+        }
+
+    qty = quantity if quantity is not None else 0
 
     if decision in ("accept", "modify") and qty > 0:
         # 1. Minimum order quantity

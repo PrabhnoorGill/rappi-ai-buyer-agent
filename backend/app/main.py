@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.db import db
 from app.seed_data import DEFAULT_SEED, DEFAULT_RECOMMENDATION
-from app.models import CreatePORequest, ModifyPORequest, Recommendation
+from app.models import Recommendation
 from app.agent import run_agent
 
 app = FastAPI(title="Rappi AI Purchasing Agent")
@@ -70,19 +70,6 @@ def get_storage(node_id: str):
     return rec
 
 
-@app.post("/api/purchase-orders")
-def create_po(req: CreatePORequest):
-    return db.create_po(req.product_id, req.node_id, req.supplier_id, req.quantity)
-
-
-@app.patch("/api/purchase-orders/{po_id}")
-def modify_po(po_id: str, req: ModifyPORequest):
-    po = db.modify_po(po_id, req.quantity)
-    if not po:
-        raise HTTPException(404, "PO not found")
-    return po
-
-
 # ---------------------------------------------------------------------------
 # Demo helpers
 # ---------------------------------------------------------------------------
@@ -114,4 +101,7 @@ def reset_state():
 
 @app.post("/api/agent/review")
 def agent_review(recommendation: Recommendation):
-    return run_agent(recommendation.model_dump())
+    try:
+        return run_agent(recommendation.model_dump())
+    except RuntimeError as exc:
+        raise HTTPException(503, str(exc)) from exc

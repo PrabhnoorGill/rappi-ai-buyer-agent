@@ -21,7 +21,7 @@ Flow for one recommendation:
 import json
 from anthropic import Anthropic
 
-from app.config import ANTHROPIC_API_KEY, ANTHROPIC_MODEL, MAX_AGENT_REVISIONS, MAX_TOOL_TURNS
+from app.config import AGENT_MODE, ANTHROPIC_API_KEY, ANTHROPIC_MODEL, MAX_AGENT_REVISIONS, MAX_TOOL_TURNS
 from app.tools import TOOL_SCHEMAS, execute_tool
 from app.db import db
 from app.validator import validate_business_decision, validate_execution
@@ -114,7 +114,112 @@ def _investigate_and_decide(client: Anthropic, messages: list, trace: list) -> d
     raise RuntimeError("Agent did not submit a decision within the tool-turn budget.")
 
 
+def _complete_run(recommendation: dict, trace: list, decision_history: list,
+                  final_decision: dict, validation: dict, escalated: bool = False) -> dict:
+    """Execute a decision only after its independent validation has passed."""
+    action_result = None
+    if not escalated and final_decision["decision"] in ("accept", "modify"):
+        po = db.create_po(
+            recommendation["product_id"],
+            recommendation["node_id"],
+            recommendation["supplier_id"],
+            final_decision["quantity"],
+            recommendation.get("category", "default"),
+        )
+        exec_validation = validate_execution(
+            po["po_id"], final_decision["quantity"], recommendation["supplier_id"]
+        )
+        action_result = {"purchase_order": po, "execution_validation": exec_validation}
+        if not exec_validation["passed"]:
+            escalated = True
+
+    return {
+        "recommendation": recommendation,
+        "trace": trace,
+        "decision_history": decision_history,
+        "final_decision": final_decision,
+        "validation": validation,
+        "action_result": action_result,
+        "escalated": escalated,
+    }
+
+
+def _run_demo_agent(recommendation: dict) -> dict:
+    """Free, deterministic local mode for demonstrating the full agent flow.
+
+    It deliberately calls the same read tools as the LLM mode, then applies
+    transparent purchasing rules. This lets a reviewer run the complete demo
+    without an external account while keeping Anthropic mode available.
+    """
+    product_id = recommendation["product_id"]
+    node_id = recommendation["node_id"]
+    supplier_id = recommendation["supplier_id"]
+    category = recommendation.get("category", "default")
+    calls = [
+        ("get_inventory", {"product_id": product_id, "node_id": node_id}),
+        ("get_demand_forecast", {"product_id": product_id, "node_id": node_id}),
+        ("get_open_purchase_orders", {"product_id": product_id, "node_id": node_id}),
+        ("get_supplier_terms", {"supplier_id": supplier_id}),
+        ("get_budget_status", {"node_id": node_id, "category": category}),
+        ("get_storage_capacity", {"node_id": node_id}),
+    ]
+    trace = []
+    results = {}
+    for name, tool_input in calls:
+        result = execute_tool(name, tool_input)
+        results[name] = result
+        trace.append({"type": "tool_call", "name": name, "input": tool_input, "result": result})
+
+    inventory = results["get_inventory"]["on_hand_qty"]
+    forecast = results["get_demand_forecast"]["forecast_qty"]
+    incoming = results["get_open_purchase_orders"]["total_open_qty"]
+    supplier = results["get_supplier_terms"]
+    budget = results["get_budget_status"]["available_amount"]
+    capacity = results["get_storage_capacity"]["available_units"]
+    existing_supply = inventory + incoming
+    need = max(0, forecast - existing_supply)
+    budget_limit = int(budget // supplier["unit_price"])
+    storage_limit = max(0, capacity - existing_supply)
+    safe_limit = min(budget_limit, storage_limit)
+    recommended = recommendation["recommended_qty"]
+
+    factors = [
+        f"Current supply is {inventory} on hand + {incoming} already ordered = {existing_supply} units.",
+        f"Forecast demand is {forecast} units; the uncovered need is {need} units.",
+        f"Supplier MOQ is {supplier['min_order_qty']} and lead time is {supplier['lead_time_days']} days.",
+        f"Budget permits up to {budget_limit} units and storage permits up to {storage_limit} additional units.",
+    ]
+    if need > 0 and (need < supplier["min_order_qty"] or safe_limit < supplier["min_order_qty"]):
+        decision = {"decision": "investigate", "quantity": None,
+                    "reasoning": "The real need or the safe purchase limit is below the supplier minimum order quantity, so a buyer must weigh the excess-stock trade-off.",
+                    "key_factors": factors}
+    elif existing_supply >= forecast * 0.9:
+        decision = {"decision": "reject", "quantity": None,
+                    "reasoning": "Existing inventory and open orders already cover forecast demand, so another purchase risks overstock.",
+                    "key_factors": factors}
+    elif recommended <= safe_limit and (existing_supply + recommended) / forecast <= 2.5:
+        decision = {"decision": "accept", "quantity": recommended,
+                    "reasoning": "The recommended quantity meets the demand gap and stays within the supplier, budget, storage, and overstock limits.",
+                    "key_factors": factors}
+    else:
+        quantity = min(safe_limit, max(supplier["min_order_qty"], need))
+        decision = {"decision": "modify", "quantity": quantity,
+                    "reasoning": "The original recommendation is not safe under the current constraints, so the order is reduced to the largest sensible quantity that remains valid.",
+                    "key_factors": factors}
+
+    trace.append({"type": "decision", "input": decision})
+    validation = validate_business_decision(recommendation, decision["decision"], decision["quantity"])
+    return _complete_run(recommendation, trace, [decision], decision, validation, not validation["passed"])
+
+
 def run_agent(recommendation: dict) -> dict:
+    if AGENT_MODE == "demo":
+        return _run_demo_agent(recommendation)
+    if AGENT_MODE != "anthropic":
+        raise RuntimeError("AGENT_MODE must be either 'demo' or 'anthropic'.")
+    if not ANTHROPIC_API_KEY:
+        raise RuntimeError("ANTHROPIC_API_KEY is not configured. Add it to backend/.env before running Anthropic mode.")
+
     client = Anthropic(api_key=ANTHROPIC_API_KEY)
 
     trace = []
@@ -129,7 +234,6 @@ def run_agent(recommendation: dict) -> dict:
 
     final_decision = None
     validation = None
-    action_result = None
     escalated = False
 
     for attempt in range(MAX_AGENT_REVISIONS + 1):
@@ -164,27 +268,4 @@ def run_agent(recommendation: dict) -> dict:
             ),
         }])
 
-    action_result = None
-    if not escalated and final_decision["decision"] in ("accept", "modify"):
-        po = db.create_po(
-            recommendation["product_id"],
-            recommendation["node_id"],
-            recommendation["supplier_id"],
-            final_decision["quantity"],
-        )
-        exec_validation = validate_execution(
-            po["po_id"], final_decision["quantity"], recommendation["supplier_id"]
-        )
-        action_result = {"purchase_order": po, "execution_validation": exec_validation}
-        if not exec_validation["passed"]:
-            escalated = True
-
-    return {
-        "recommendation": recommendation,
-        "trace": trace,
-        "decision_history": decision_history,
-        "final_decision": final_decision,
-        "validation": validation,
-        "action_result": action_result,
-        "escalated": escalated,
-    }
+    return _complete_run(recommendation, trace, decision_history, final_decision, validation, escalated)

@@ -1,10 +1,10 @@
 """
 Tools available to the agent, plus their Anthropic tool-use schemas.
 
-Each tool mirrors a real endpoint in app/main.py (inventory, forecast, open
-POs, supplier terms, budget, storage, create/modify PO). The agent calls
-these functions directly in-process; main.py exposes the same operations
-over HTTP so the same "tools" are also usable as a normal internal API.
+Each read tool mirrors a real endpoint in app/main.py (inventory, forecast,
+open POs, supplier terms, budget and storage). The agent calls these
+functions directly in-process; main.py exposes the same read operations over
+HTTP. PO writes stay inside the validated orchestrator.
 """
 from app.db import db
 
@@ -68,7 +68,7 @@ TOOL_SCHEMAS = [
     },
     {
         "name": "get_storage_capacity",
-        "description": "Get remaining free storage capacity (in product storage units) at a fulfillment node.",
+        "description": "Get total storage capacity (in product storage units) at a fulfillment node. Current inventory and open POs consume this capacity.",
         "input_schema": {
             "type": "object",
             "properties": {"node_id": {"type": "string"}},
